@@ -12,6 +12,10 @@ struct PostDetailView: View {
     @State private var isLoading = true
     @State private var showDeleteAlert = false
 
+    // 좋아요 상태
+    @State private var isLiked = false
+    @State private var likeCount = 0
+
     var body: some View {
         NavigationView {
             VStack(spacing: 16) {
@@ -34,7 +38,6 @@ struct PostDetailView: View {
                         Text(post.content)
                             .font(.body)
 
-                        // 이미지가 있으면 표시
                         if let imageURL = post.imageURL, !imageURL.isEmpty {
                             AsyncImage(url: URL(string: imageURL)) { image in
                                 image
@@ -45,6 +48,17 @@ struct PostDetailView: View {
                             }
                             .frame(maxHeight: 300)
                             .cornerRadius(8)
+                        }
+
+                        // 좋아요 버튼
+                        HStack {
+                            Button(action: {
+                                toggleLike()
+                            }) {
+                                Image(systemName: isLiked ? "heart.fill" : "heart")
+                                    .foregroundColor(isLiked ? .red : .gray)
+                            }
+                            Text("\(likeCount)")
                         }
 
                         Divider()
@@ -70,7 +84,6 @@ struct PostDetailView: View {
                                     }
                                     Text(comment.content)
 
-                                    // 내 댓글만 삭제 가능
                                     if comment.authorId == authVM.currentUserId {
                                         Button(role: .destructive) {
                                             deleteComment(comment)
@@ -92,7 +105,6 @@ struct PostDetailView: View {
                 HStack {
                     TextField("댓글을 입력하세요", text: $newComment)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-
                     Button("등록") {
                         addComment()
                     }
@@ -110,7 +122,6 @@ struct PostDetailView: View {
                     }
                 }
 
-                // 내 글일 때만 삭제 버튼
                 if post.authorId == authVM.currentUserId {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button(role: .destructive) {
@@ -129,14 +140,16 @@ struct PostDetailView: View {
             }
             .onAppear {
                 loadComments()
+                fetchLikeStatus()
+                fetchLikeCount()
             }
         }
     }
 
     func loadComments() {
         isLoading = true
-        let db = Firestore.firestore()
-        db.collection("posts")
+        Firestore.firestore()
+            .collection("posts")
             .document(post.id)
             .collection("comments")
             .order(by: "createdAt")
@@ -158,8 +171,8 @@ struct PostDetailView: View {
             "createdAt": Timestamp()
         ]
 
-        let db = Firestore.firestore()
-        db.collection("posts")
+        Firestore.firestore()
+            .collection("posts")
             .document(post.id)
             .collection("comments")
             .addDocument(data: commentData) { error in
@@ -171,20 +184,18 @@ struct PostDetailView: View {
     }
 
     func deleteComment(_ comment: Comment) {
-        let db = Firestore.firestore()
-        db.collection("posts")
+        Firestore.firestore()
+            .collection("posts")
             .document(post.id)
             .collection("comments")
             .document(comment.id)
             .delete { _ in
                 loadComments()
             }
-        }
+    }
 
     func deletePost() {
         let db = Firestore.firestore()
-
-        // Storage 이미지 먼저 삭제
         if let imageURL = post.imageURL, !imageURL.isEmpty {
             let storageRef = Storage.storage().reference(forURL: imageURL)
             storageRef.delete { error in
@@ -193,14 +204,36 @@ struct PostDetailView: View {
                 }
             }
         }
-
-        // 게시글 문서 삭제
         db.collection("posts").document(post.id).delete { error in
-            if let error = error {
-                print("❗️게시글 삭제 실패: \(error.localizedDescription)")
-            } else {
+            if error == nil {
                 dismiss()
             }
+        }
+    }
+
+    func toggleLike() {
+        guard let uid = authVM.currentUserId else { return }
+        let ref = Firestore.firestore().collection("posts").document(post.id).collection("likes").document(uid)
+
+        if isLiked {
+            ref.delete()
+        } else {
+            ref.setData([:]) // 좋아요 추가
+        }
+    }
+
+    func fetchLikeStatus() {
+        guard let uid = authVM.currentUserId else { return }
+        let ref = Firestore.firestore().collection("posts").document(post.id).collection("likes").document(uid)
+        ref.addSnapshotListener { doc, _ in
+            isLiked = doc?.exists == true
+        }
+    }
+
+    func fetchLikeCount() {
+        let ref = Firestore.firestore().collection("posts").document(post.id).collection("likes")
+        ref.addSnapshotListener { snap, _ in
+            likeCount = snap?.count ?? 0
         }
     }
 

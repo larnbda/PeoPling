@@ -39,7 +39,6 @@ struct MemoView: View {
                     }
                 }
             }
-            .navigationBarHidden(true)
             .sheet(isPresented: $showNewMemo) {
                 EditMemoView(memo: nil, memoStore: memoStore)
             }

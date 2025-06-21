@@ -77,7 +77,6 @@ struct BoardView: View {
                     }
                 }
             }
-            .navigationBarHidden(true)
             .onAppear {
                 setupPostListener()
             }
